@@ -391,7 +391,7 @@ _BACKEND_DEFAULTS: Dict[str, Dict[str, str]] = {
 
 
 def create_llm(backend: str = "mock", **kwargs: Any) -> BaseLLM:
-    """Instantiate an LLM backend by name. Pass api_key / model / base_url as needed."""  # noqa: E501
+    """Instantiate an LLM backend by name. Pass api_key / model / base_url as needed."""  
     key = backend.lower()
     cls = _BACKEND_MAP.get(key)
     if cls is None:
