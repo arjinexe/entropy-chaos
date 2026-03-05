@@ -3,7 +3,7 @@
 ## Setup
 
 ```bash
-git clone https://github.com/yourusername/entropy-chaos
+git clone https://github.com/arjinexe/entropy-chaos
 cd entropy-chaos
 pip install -e ".[dev]"
 python tests/test_entropy.py
