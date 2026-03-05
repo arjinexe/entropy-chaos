@@ -74,7 +74,8 @@ def _add_run_parser(sub):
     p.add_argument("--proxy-mode",  action="store_true",          help="Start HTTP interception proxy")
     p.add_argument("--proxy-port",  type=int, default=8888,       help="Interception proxy port (default: 8888)")  # Rate limit
     p.add_argument("--no-rate-limit-check", action="store_true", help="Skip rate limit detection")
-    p.add_argument("--rate-limit-probes",   type=int, default=50, metavar="N", help="Max probes for rate limit detection (default: 50)")  # Differential testing
+    p.add_argument("--rate-limit-probes",   type=int, default=20, metavar="N", help="Max probes for rate limit detection (default: 20)")  # Differential testing
+    p.add_argument("--max-scan-minutes",    type=int, default=45, metavar="N", help="Hard wall-clock timeout for the full scan in minutes (default: 45, 0=unlimited)")
     p.add_argument("--diff-target",      default=None, metavar="URL", help="Compare --target vs this URL (prod vs staging, v1 vs v2)")
     p.add_argument("--diff-auth-header", default=None, metavar="HEADER", help="Auth header for diff target e.g. 'Authorization: Bearer token'")  # Custom persona
     p.add_argument("--custom-persona",   default=None, metavar="FILE", help="Custom persona YAML file path")  # Webhooks
@@ -142,6 +143,7 @@ def cmd_run(args) -> int:
         auto_discover    = args.discover,
         rate_limit_check = not args.no_rate_limit_check,
         rate_limit_max_probes = args.rate_limit_probes,
+        max_scan_minutes = args.max_scan_minutes,
         diff_target      = args.diff_target,
         diff_auth_header = args.diff_auth_header,
         custom_persona   = args.custom_persona,

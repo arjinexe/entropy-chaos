@@ -94,7 +94,7 @@ class EntropyConfig:
     extra_targets:    List[str] = field(default_factory=list)  # Custom persona
     custom_persona:   Optional[str] = None  # Rate limit detection
     rate_limit_check: bool = True
-    rate_limit_max_probes: int = 50  # Differential testing
+    rate_limit_max_probes: int = 20  # Differential testing (reduced from 50 for speed)
     diff_target:      Optional[str] = None
     diff_auth_header: Optional[str] = None
     # v0.4.0 advanced scanning
@@ -107,6 +107,7 @@ class EntropyConfig:
     idor_chain:       bool = True
     adaptive_analysis: bool = True   # LLM false-positive filtering
     max_adaptive_budget: int = 20    # max findings to send to LLM for review
+    max_scan_minutes:  int   = 45    # hard wall-clock timeout for the full scan (0 = unlimited)
 
     @classmethod
     def from_yaml(cls, yaml_path: str | None = None) -> "EntropyConfig":
@@ -160,6 +161,12 @@ class EntropyRunner:
     def run(self) -> EntropyReport:
         cfg    = self.config
         report = EntropyReport(target=cfg.target_url, status=TestStatus.RUNNING)
+        _scan_start = time.time()
+
+        def _scan_timed_out() -> bool:
+            if cfg.max_scan_minutes <= 0:
+                return False
+            return (time.time() - _scan_start) > cfg.max_scan_minutes * 60
 
         self._print_banner()
 
@@ -192,10 +199,16 @@ class EntropyRunner:
             all_findings: List[Finding] = []
 
             for pc in persona_configs:
+                if _scan_timed_out():
+                    self._log(f"⏱  Scan time limit ({cfg.max_scan_minutes} min) reached — stopping early.")
+                    break
                 persona = create_persona(pc.type, pc, self.llm, schema)
                 self._log(f"  👤 {persona.name}")
 
-                for vector in vectors:
+                for vi, vector in enumerate(vectors):
+                    if _scan_timed_out():
+                        self._log(f"  ⏱  Time limit reached mid-persona — stopping.")
+                        break
                     if not vector.endpoint:
                         continue
                     vector.persona_type = pc.type

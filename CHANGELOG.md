@@ -2,7 +2,24 @@
 
 ---
 
-## 0.4.2
+## 0.4.3
+
+Patch release: CI stability, HTML report correctness, and scan performance.
+
+### Bug fixes
+
+**CI: Python 3.11 test job blocked by SARIF action resolution** — The `github/codeql-action/upload-sarif` step was inside the `test` matrix job. When GitHub's action-download service returned `503 Service Unavailable` during job setup, the entire Python 3.11 job failed—even the actual tests. The SARIF upload now runs in a separate `sarif-upload` job (`continue-on-error: true`) that downloads the `.sarif` artifact produced by the test job. The test matrix no longer references CodeQL and is unaffected by transient GitHub infrastructure issues.
+
+**HTML report: findings hidden when payloads contain HTML special characters** — Finding titles, descriptions, endpoints, and HTTP bodies were inserted into the HTML template as raw strings. Payloads such as `<script>alert(1)</script>` or SQL strings containing `<`, `>`, and `"` broke the document structure, causing most finding cards to be invisible and detail expansion to silently fail. All user-supplied strings are now escaped with `html.escape()` before insertion.
+
+### Performance
+
+**Scan wall-clock timeout** — A new `max_scan_minutes` config option (default `45`, CLI flag `--max-scan-minutes`) stops the scan loop after the configured number of minutes and proceeds directly to reporting. Previously a large target like OWASP Juice Shop could run for 49+ minutes without bound.
+
+**Rate-limit probe count halved** — `rate_limit_max_probes` default reduced from `50` to `20`. The detection threshold is reliably hit within 20 requests for every common implementation; the extra 30 probes only added latency.
+
+---
+
 
 Maintenance release. Bug fixes, test hardening, and packaging improvements.
 

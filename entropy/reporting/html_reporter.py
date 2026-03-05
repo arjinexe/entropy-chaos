@@ -1,12 +1,18 @@
 """"Self-contained HTML report generator."""
 from __future__ import annotations
 
+import html as _html
 import json
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
 from entropy.core.models import EntropyReport, Finding, Severity
+
+
+def _e(text) -> str:
+    """HTML-escape a value; safe for insertion into HTML attributes and text."""
+    return _html.escape(str(text or ""), quote=True)
 
 
 _SEV_COLOR = {
@@ -236,29 +242,29 @@ function toggleTheme(){{
         sev_color = _SEV_COLOR[finding.severity]
         sev_bg    = _SEV_BG[finding.severity]
         steps_html = self._steps_html(finding)
-        remediation = f'<div class="section-label">Remediation</div><div class="remediation">{finding.remediation}</div>' if finding.remediation else ""
+        remediation = f'<div class="section-label">Remediation</div><div class="remediation">{_e(finding.remediation)}</div>' if finding.remediation else ""
 
-        return f"""<div class="finding-card" data-id="{finding.id}">
+        return f"""<div class="finding-card" data-id="{_e(finding.id)}">
   <div class="finding-header" id="hdr-{idx}" onclick="toggleCard({idx})">
     <div class="sev-bar" style="background:{sev_color}"></div>
     <div class="info">
-      <h3>{finding.title}</h3>
+      <h3>{_e(finding.title)}</h3>
       <div class="meta">
-        <span><span class="badge" style="background:{sev_bg};color:{sev_color}">{finding.severity.value.upper()}</span></span>
-        <span>📌 {finding.type.value.replace('_',' ').title()}</span>
-        <span>🔗 <code>{finding.endpoint or '—'}</code></span>
-        {"<span>👤 " + finding.persona + "</span>" if finding.persona else ""}
+        <span><span class="badge" style="background:{sev_bg};color:{sev_color}">{_e(finding.severity.value.upper())}</span></span>
+        <span>📌 {_e(finding.type.value.replace('_',' ').title())}</span>
+        <span>🔗 <code>{_e(finding.endpoint or '—')}</code></span>
+        {"<span>👤 " + _e(finding.persona) + "</span>" if finding.persona else ""}
       </div>
     </div>
     <span class="chevron">▼</span>
   </div>
   <div class="finding-body" id="body-{idx}">
     <div class="section-label">Description</div>
-    <p>{finding.description}</p>
+    <p>{_e(finding.description)}</p>
     {remediation}
     {steps_html}
     <div class="section-label">Finding ID</div>
-    <code style="font-size:.75rem;color:var(--muted)">{finding.id}</code>
+    <code style="font-size:.75rem;color:var(--muted)">{_e(finding.id)}</code>
   </div>
 </div>"""
 
@@ -272,13 +278,13 @@ function toggleTheme(){{
             if step.request:
                 req  = step.request
                 body = json.dumps(req.body, indent=2) if req.body else "null"
-                req_html = f"<pre>{req.method} {req.url}\n\n{body[:800]}</pre>"
+                req_html = f"<pre>{_e(req.method)} {_e(req.url)}\n\n{_e(body[:800])}</pre>"
             if step.response:
                 resp  = step.response
                 rbody = json.dumps(resp.body, indent=2)[:600] if resp.body else str(resp.body)
-                resp_html = f"<p style='margin:.5rem 0;font-size:.85rem'>Response: <strong>{resp.status_code}</strong> ({resp.latency_ms:.0f}ms)</p><pre>{rbody}</pre>"
+                resp_html = f"<p style='margin:.5rem 0;font-size:.85rem'>Response: <strong>{_e(resp.status_code)}</strong> ({resp.latency_ms:.0f}ms)</p><pre>{_e(rbody)}</pre>"
             items.append(f"""<div class="step">
-  <span class="step-num">{step.step_number}</span> {step.description}
+  <span class="step-num">{step.step_number}</span> {_e(step.description)}
   {req_html}{resp_html}
 </div>""")
         return '<div class="section-label">Reproduction Steps</div>' + "".join(items)
