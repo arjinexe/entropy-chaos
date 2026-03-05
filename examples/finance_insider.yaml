@@ -1,0 +1,30 @@
+# Example: Finance Team Insider persona
+# Use: entropy run --spec openapi.yaml --custom-persona examples/finance_insider.yaml --live
+
+name: "Finance Team Insider"
+description: "Authenticated finance user attempting privilege escalation and data exfiltration"
+auth_level: read_write
+attack_focus:
+  - privilege_escalation
+  - idor
+  - data_exfiltration
+  - mass_assignment
+endpoints_whitelist:
+  - /api/reports
+  - /api/export
+  - /api/users
+  - /api/invoices
+endpoints_blacklist:
+  - /health
+  - /metrics
+payload_overrides:
+  is_admin: true
+  role: "admin"
+  department: "finance"
+headers:
+  X-Department: finance
+  X-Employee-ID: "EMP-12345"
+concurrency: 3
+max_steps: 8
+delay_ms: 100
+notes: "Simulates a finance team member who has read access but attempts to escalate"
