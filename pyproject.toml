@@ -1,0 +1,86 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name            = "entropy-chaos"
+version         = "0.4.2"
+description     = "AI-Powered Autonomous Chaos Engineering & Logical Fuzzing Framework"
+readme          = "README.md"
+license         = { text = "MIT" }
+requires-python = ">=3.10"
+keywords        = ["security", "api-testing", "fuzzing", "chaos-engineering", "llm", "owasp"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Information Technology",
+    "Topic :: Security",
+    "Topic :: Software Development :: Testing",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+
+# Runtime: stdlib-first. Every feature works with just PyYAML.
+dependencies = [
+    "pyyaml>=6.0",
+]
+
+[project.optional-dependencies]
+# pip install entropy-chaos[full]  — all features enabled
+full = [
+    "pyyaml>=6.0",
+    "httpx>=0.27",          # faster HTTP client (optional, falls back to urllib)
+    "rich>=13.0",           # coloured CLI output
+    "docker>=7.0",          # Docker SDK for Python (sandbox)
+    "websockets>=12.0",     # enhanced WebSocket support
+]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "black",
+    "ruff",
+    "mypy",
+    "coverage",
+    "pytest-cov",
+]
+
+[project.urls]
+Homepage      = "https://github.com/yourusername/entropy-chaos"
+Documentation = "https://github.com/yourusername/entropy-chaos#readme"
+"Bug Tracker" = "https://github.com/yourusername/entropy-chaos/issues"
+Changelog     = "https://github.com/yourusername/entropy-chaos/blob/main/CHANGELOG.md"
+
+[project.scripts]
+entropy = "entropy.cli:main"
+
+[tool.setuptools.packages.find]
+where   = ["."]
+include = ["entropy*"]
+
+[tool.setuptools.package-data]
+"entropy" = ["py.typed"]
+"entropy.scenarios" = ["*.yaml", "*.yml", "*.json"]
+"entropy.schemas"   = ["*.yaml", "*.yml", "*.json"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths    = ["tests"]
+addopts      = "--tb=short -q"
+
+[tool.ruff]
+line-length    = 100
+target-version = "py310"
+select         = ["E", "F", "I", "UP", "B", "SIM"]
+ignore         = ["E501", "B008"]
+
+[tool.mypy]
+python_version        = "3.10"
+ignore_missing_imports = true
+strict                = false
+
+[tool.coverage.run]
+source = ["entropy"]
+omit   = ["tests/*", "entropy/web/*"]
