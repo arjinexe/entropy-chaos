@@ -12,6 +12,6 @@
 
 Please **do not** open a public issue for security vulnerabilities.
 
-Email: security@yourdomain.com
+Email: arjinakar7@gmail.com
 
 We aim to respond within 48 hours and publish a fix within 14 days.
