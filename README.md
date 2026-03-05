@@ -8,7 +8,6 @@ API security testing with LLM-generated attack scenarios
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Tests](https://img.shields.io/badge/tests-128%20passing-brightgreen)](#)
-[![CI](https://github.com/arjinexe/entropy-chaos/actions/workflows/ci.yml/badge.svg)](https://github.com/arjinexe/entropy-chaos/actions)
 
 </div>
 
@@ -30,7 +29,7 @@ Requires Python 3.10+. The only mandatory dependency is PyYAML — everything el
 
 ---
 
-## Quick start
+## Basic usage
 
 ```bash
 # Simulate attacks without sending real requests (safe to run anywhere)
@@ -42,7 +41,7 @@ entropy run --spec openapi.yaml --target http://localhost:8000 --live
 # No spec file — let it discover endpoints on its own
 entropy run --target https://api.example.com --discover --live
 
-# Use a real LLM for smarter attack generation
+# Use a real LLM for better attack generation
 entropy run --spec api.yaml --llm anthropic --live
 # ANTHROPIC_API_KEY is picked up from the environment automatically
 ```
@@ -57,15 +56,15 @@ entropy run --spec api.yaml --llm anthropic --live
 
 | Persona | What it tests |
 |---------|---------------|
-| `malicious_insider` | Authenticated abuse — IDOR, mass assignment, privilege escalation, negative values |
+| `malicious_insider` | Authenticated abuse — IDOR, mass assignment, privilege escalation |
 | `impatient_consumer` | Timing issues — race conditions, double-spend, retry loops |
-| `bot_swarm` | Volume-based issues — rate limiting, resource exhaustion (capped at 10 concurrent) |
+| `bot_swarm` | Volume-based issues — rate limiting, resource exhaustion |
 | `confused_user` | Edge cases — type confusion, state machine bypasses, unexpected inputs |
-| `penetration_tester` | Classic vulns — SQLi, XSS, SSTI, path traversal, auth bypass |
+| `penetration_tester` | Classic vulns — injection, auth bypass, SSRF, XXE |
 
-**Baseline diffing.** Before sending an attack payload, Entropy sends a normal request to the same endpoint and records the response. Findings are only flagged when the attack response meaningfully differs from the baseline — different status code, new fields in the body, significant latency increase. This cuts out most of the noise.
+**Baseline diffing.** Before sending an attack payload, Entropy sends a normal request to the same endpoint and records the response. Findings are only flagged when the attack response meaningfully differs from the baseline — different status code, new fields in the body, significant latency increase. This cuts out most of the noise that comes from endpoints that are already returning errors.
 
-**History.** Every run is saved to `~/.entropy/history.db`. In CI, Entropy will exit non-zero if it finds new issues compared to the previous run for the same target, making it usable as a regression gate.
+**History.** Every run is saved to `~/.entropy/history.db`. In CI, Entropy will exit non-zero if it finds new issues compared to the previous run for the same target, which makes it usable as a regression gate.
 
 ---
 
@@ -73,65 +72,129 @@ entropy run --spec api.yaml --llm anthropic --live
 
 Entropy works with most LLM APIs. Set the relevant env var and pass `--llm <backend>`:
 
-| Backend | Env var | Notes |
-|---------|---------|-------|
-| `anthropic` | `ANTHROPIC_API_KEY` | Best results |
-| `openai` | `OPENAI_API_KEY` | GPT-4o recommended |
-| `gemini` | `GEMINI_API_KEY` | |
-| `mistral` | `MISTRAL_API_KEY` | |
-| `groq` | `GROQ_API_KEY` | Fast, free tier available |
-| `ollama` | *(no key — runs locally)* | `ollama pull llama3` first |
-| `huggingface` | `HF_API_KEY` | |
-| `mock` | *(no key — deterministic)* | For CI/testing only |
+| Backend | Env var |
+|---------|---------|
+| `anthropic` | `ANTHROPIC_API_KEY` |
+| `openai` | `OPENAI_API_KEY` |
+| `gemini` | `GEMINI_API_KEY` |
+| `mistral` | `MISTRAL_API_KEY` |
+| `groq` | `GROQ_API_KEY` |
+| `ollama` | *(no key — runs locally)* |
+| `huggingface` | `HF_API_KEY` |
+| `mock` | *(no key — deterministic, for CI/testing)* |
 
-> **Note on `mock` backend:** The mock LLM generates fixed, pre-written attack payloads without understanding your specific API. It's useful for CI pipeline validation and smoke-testing, but will miss business-logic bugs that require contextual understanding. For real security testing, use `--llm anthropic` or `--llm openai`.
+The `mock` backend generates realistic-looking attack scenarios without any API calls. It's what the test suite uses, and it's good enough to validate your pipeline setup before wiring in a real LLM.
 
 ---
 
-## Endpoint discovery
+## v0.3 features
 
-If you don't have a spec file, pass `--discover`. The crawler:
+### Endpoint discovery
 
-- Checks `robots.txt` and `sitemap.xml`
-- Probes 200+ common API paths (including PHP-specific paths)
-- **Follows HTML links recursively** (depth-limited)
-- **Extracts `<form>` actions and `<input>` names** to find POST endpoints
-- **Discovers query parameters** from linked URLs (e.g. `?cat=1&page=2`)
-- Mines JS files for `fetch()`/`axios` calls
-- Looks for OpenAPI/Swagger specs at standard locations
+If you don't have a spec file (or don't want to maintain one), pass `--discover`:
 
 ```bash
 entropy run --target https://api.example.com --discover --live
+```
 
+It checks `robots.txt`, crawls linked JS files for `fetch()`/`axios` calls, probes 110+ common API paths, and looks for OpenAPI/Swagger specs at the usual locations. What it finds gets fed into the attack generation pipeline the same way a spec would.
+
+```bash
 # Just discovery, no fuzzing
 entropy discover --target https://api.example.com
 ```
 
-For PHP/legacy sites with HTML forms, discovery works best with `--verbose` to see what's found:
+### Rate limit detection
 
 ```bash
-entropy run --target http://testphp.vulnweb.com --discover --live --verbose
+# Runs automatically during a scan, or standalone:
+entropy ratelimit --url https://api.example.com/login --max-probes 60
+```
+
+Sends requests until it hits a 429 (or exhausts the probe budget), then tests common bypass techniques: `X-Forwarded-For` rotation, `X-Real-IP`, path variations with trailing slashes. Missing rate limits are reported as HIGH; bypassable ones as CRITICAL.
+
+### Differential testing
+
+Compare two targets and find where they diverge:
+
+```bash
+entropy compare \
+  --spec openapi.yaml \
+  --target-a https://api.example.com/v1 \
+  --target-b https://api.example.com/v2
+```
+
+Flags status code changes, removed response fields, and significant latency regressions. Useful for catching breaking changes before a release, or verifying that staging matches prod.
+
+### Custom personas
+
+The built-in personas cover general threat models. If you want to simulate something specific to your app:
+
+```bash
+entropy persona template > finance-insider.yaml
+# edit it
+entropy persona validate finance-insider.yaml
+entropy run --spec api.yaml --custom-persona finance-insider.yaml --live
+```
+
+```yaml
+name: finance-insider
+auth_level: read_write
+attack_focus:
+  - privilege_escalation
+  - idor
+endpoints_whitelist:
+  - /api/reports
+  - /api/export
+payload_overrides:
+  role: admin
+  is_admin: true
+```
+
+### Dashboard
+
+```bash
+entropy run --spec api.yaml --dashboard --live
+# http://localhost:8080
+```
+
+Real-time findings feed via Server-Sent Events. No external JS dependencies.
+
+### WebSocket fuzzing
+
+```bash
+entropy run --spec api.yaml --ws wss://api.example.com/ws --live
+```
+
+15 payloads covering injection, prototype pollution, oversized messages, and type confusion. Uses the stdlib `ssl`/`socket` — no `websockets` package required.
+
+### Proxy integration
+
+```bash
+# Route through Burp Suite
+entropy run --spec api.yaml --proxy http://127.0.0.1:8080 --no-verify-ssl --live
+
+# Entropy as an intercepting proxy (mutates requests in flight)
+entropy proxy --port 8888
+```
+
+### Watch mode
+
+```bash
+entropy run --spec api.yaml --watch --watch-interval 300 --live
+entropy run --spec api.yaml --watch --watch-file api.yaml --live  # re-run on spec changes
 ```
 
 ---
 
-## Testing against practice targets
-
-These are publicly available sites intended for security tool testing:
+## Output formats
 
 ```bash
-# Acunetix test PHP app (deliberately vulnerable)
-entropy run --target http://testphp.vulnweb.com --discover --llm mock --live --no-rate-limit-check
-
-# IBM demo banking app
-entropy run --target http://demo.testfire.net --discover --llm mock --live --no-rate-limit-check
-
-# Local: OWASP Juice Shop (Docker)
-docker run -d -p 3000:3000 bkimminich/juice-shop
-entropy run --target http://localhost:3000 --discover --llm mock --live --profile full
+entropy run --spec api.yaml --live                    # Markdown + JSON + HTML (default)
+entropy run --spec api.yaml --sarif results.sarif --live  # SARIF for GitHub Code Scanning
 ```
 
-> **Legal reminder:** Only test targets you own or have explicit written permission to test. Unauthorised testing is illegal regardless of the target's apparent vulnerability.
+All runs produce a Markdown summary, a machine-readable JSON report, and an HTML report with severity breakdowns. The JSON output is stable across versions.
 
 ---
 
@@ -152,42 +215,6 @@ entropy run --spec api.yaml --profile full  --live   # thorough, all personas
 
 ---
 
-## Output formats
-
-```bash
-entropy run --spec api.yaml --live                        # Markdown + JSON + HTML (default)
-entropy run --spec api.yaml --sarif results.sarif --live  # SARIF for GitHub Code Scanning
-entropy run --spec api.yaml --junit junit.xml --live      # JUnit XML for CI systems
-```
-
-Reports are saved to the `entropy-report/` directory by default. Change with `--output`.
-
----
-
-## Useful flags
-
-| Flag | Default | Description |
-|------|---------|-------------|
-| `--live` | off | Send real HTTP requests (default is dry-run simulation) |
-| `--discover` | off | Auto-discover endpoints instead of using a spec file |
-| `--profile` | standard | Scan profile: quick / standard / full / stealth / ci |
-| `--llm` | mock | LLM backend to use for attack generation |
-| `--fail-on` | high | Exit 1 if findings at this severity or above: critical/high/medium/low/none |
-| `--no-history` | off | Skip saving run to history DB (useful for one-off tests) |
-| `--no-rate-limit-check` | off | Skip rate limit detection (faster, less noise) |
-| `--no-baseline` | off | Skip baseline diffing |
-| `--concurrency` | 10 | Max concurrent requests |
-| `--timeout` | 10.0 | Request timeout in seconds |
-| `--retries` | 3 | Retry failed requests with backoff |
-| `--proxy` | — | Route through a proxy (e.g. `http://127.0.0.1:8080` for Burp) |
-| `--no-verify-ssl` | off | Disable TLS verification |
-| `--verbose` | off | Print every request/response |
-| `--output` | entropy-report | Output directory for reports |
-| `--sarif` | — | Also write SARIF report to this path |
-| `--junit` | — | Also write JUnit XML to this path |
-
----
-
 ## CI integration
 
 ### GitHub Actions
@@ -203,7 +230,6 @@ Reports are saved to the `entropy-report/` directory by default. Change with `--
       --target ${{ env.API_URL }} \
       --llm anthropic \
       --profile ci \
-      --no-history \
       --sarif results.sarif \
       --live
   env:
@@ -223,7 +249,7 @@ entropy:
   image: python:3.11
   script:
     - pip install entropy-chaos
-    - entropy run --spec openapi.yaml --target $API_URL --llm groq --profile ci --no-history --live
+    - entropy run --spec openapi.yaml --target $API_URL --llm groq --profile ci --live
   artifacts:
     reports:
       junit: entropy-report/junit.xml
@@ -236,7 +262,7 @@ entropy:
 Rather than passing flags every time, drop an `entropy.yml` in your project root:
 
 ```bash
-entropy run                          # picks up entropy.yml automatically
+entropy run                        # picks up entropy.yml automatically
 entropy run --config path/to/entropy.yml
 ```
 
@@ -270,85 +296,6 @@ entropy report config-template > entropy.yml
 
 ---
 
-## v0.3 features
-
-### Rate limit detection
-
-```bash
-entropy ratelimit --url https://api.example.com/login --max-probes 60
-```
-
-Sends requests until it hits a 429, then tests common bypass techniques: `X-Forwarded-For` rotation, `X-Real-IP`, path variations. Missing rate limits are reported as HIGH; bypassable ones as CRITICAL.
-
-### Differential testing
-
-```bash
-entropy compare \
-  --spec openapi.yaml \
-  --target-a https://api.example.com/v1 \
-  --target-b https://api.example.com/v2
-```
-
-Flags status code changes, removed fields, and latency regressions. Useful for staging vs prod verification.
-
-### Custom personas
-
-```bash
-entropy persona template > finance-insider.yaml
-entropy persona validate finance-insider.yaml
-entropy run --spec api.yaml --custom-persona finance-insider.yaml --live
-```
-
-```yaml
-name: finance-insider
-auth_level: read_write
-attack_focus:
-  - privilege_escalation
-  - idor
-endpoints_whitelist:
-  - /api/reports
-  - /api/export
-payload_overrides:
-  role: admin
-  is_admin: true
-```
-
-### Dashboard
-
-```bash
-entropy run --spec api.yaml --dashboard --live
-# http://localhost:8080
-```
-
-Real-time findings feed via Server-Sent Events.
-
-### WebSocket fuzzing
-
-```bash
-entropy run --spec api.yaml --ws wss://api.example.com/ws --live
-```
-
-15 payloads covering injection, prototype pollution, oversized messages, type confusion.
-
-### Proxy integration
-
-```bash
-# Route through Burp Suite
-entropy run --spec api.yaml --proxy http://127.0.0.1:8080 --no-verify-ssl --live
-
-# Entropy as an intercepting proxy
-entropy proxy --port 8888
-```
-
-### Watch mode
-
-```bash
-entropy run --spec api.yaml --watch --watch-interval 300 --live
-entropy run --spec api.yaml --watch --watch-file api.yaml --live
-```
-
----
-
 ## All commands
 
 ```
@@ -366,25 +313,6 @@ entropy owasp      List OWASP Top 10 scenarios
 ```
 
 Full flag reference: `entropy run --help`
-
----
-
-## Troubleshooting
-
-**Scan takes too long**
-Add `--no-rate-limit-check` and reduce `--concurrency 3`. The `quick` profile is also faster.
-
-**Too many false positives**
-Use `--fail-on critical` or `--profile stealth` to reduce noise.
-
-**Only 2 endpoints discovered**
-Use `--verbose` to see what the crawler finds. For JS-heavy SPAs, consider providing an OpenAPI spec directly. For PHP sites, discovery should find form-based endpoints automatically.
-
-**History regression warnings on every run**
-Add `--no-history` for ad-hoc testing. History tracking is designed for CI where the same target is scanned repeatedly.
-
-**SSL errors**
-Add `--no-verify-ssl` for self-signed certificates.
 
 ---
 

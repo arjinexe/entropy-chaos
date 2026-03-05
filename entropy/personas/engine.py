@@ -241,7 +241,7 @@ class BotSwarmPersona(BasePersona):
         body  = self._ask_llm_for_payload(ep, hints)
 
         # Build a large batch of identical requests
-        count = min(self.config.concurrency, 10)  # capped at 10 to avoid overwhelming targets
+        count = min(self.config.concurrency, 100)
         for _ in range(count):
             requests.append(self._make_request(ep, body=body))
 
@@ -379,7 +379,7 @@ def all_persona_configs(concurrency: int = 10) -> List[PersonaConfig]:
     return [
         PersonaConfig(PersonaType.MALICIOUS_INSIDER,  concurrency=1,           delay_ms=400),
         PersonaConfig(PersonaType.IMPATIENT_CONSUMER, concurrency=5,           delay_ms=50),
-        PersonaConfig(PersonaType.BOT_SWARM,          concurrency=min(concurrency, 10), delay_ms=100),
+        PersonaConfig(PersonaType.BOT_SWARM,          concurrency=concurrency, delay_ms=10),
         PersonaConfig(PersonaType.CONFUSED_USER,      concurrency=1,           delay_ms=200),
         PersonaConfig(PersonaType.PENETRATION_TESTER, concurrency=1,           delay_ms=300),
     ]

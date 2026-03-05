@@ -46,34 +46,8 @@ class ServerErrorRule(AnomalyRule):
             severity=Severity.HIGH,
         )
 
-    # Payloads likely to reveal server crashes when mishandled
-    _TRIGGER_HINTS = [
-        "' or", "' or '", "select ", "union ", "drop ", "--",
-        "<script>", "javascript:", "onerror=", "onload=",
-        "../../../../", "%2e%2e", "${", "{{", "<%",
-        "\x00", "%00", "\u0000",
-        "; ls", "| cat", "`id`",
-        "null", "undefined", "nan", "infinity",
-    ]
-
     def check(self, req, resp, context):
-        if resp.status_code < 500:
-            return False
-        # Always flag if request contained a known attack payload
-        body_str = str(req.body or "").lower()
-        params_str = str(req.params or "").lower()
-        combined = body_str + params_str + req.url.lower()
-        for hint in self._TRIGGER_HINTS:
-            if hint in combined:
-                return True
-        # Also flag if the response leaks internal error details
-        resp_str = str(resp.body or "").lower()
-        for leak in ("traceback", "exception", "syntax error", "at line", "stack trace",
-                     "sqlstate", "mysql", "postgresql", "sqlite", "ora-", "django",
-                     "flask", "rails", "laravel", "express"):
-            if leak in resp_str:
-                return True
-        return False
+        return resp.status_code >= 500
 
 
 class NegativeValueAcceptedRule(AnomalyRule):
@@ -176,38 +150,15 @@ class InjectionSuccessRule(AnomalyRule):
         "<script>", "alert(", "49",         # 7*7 template injection
         "root:", "/etc/passwd", "syntax error",
         "sql", "mysql", "sqlite", "postgresql",
-        "ora-", "sqlstate", "warning:", "fatal error",
-    ]
-
-    # Markers that only need to appear in the RESPONSE (not in request)
-    # — i.e. the server leaked something it shouldn't
-    _RESPONSE_ONLY_LEAKS = [
-        "sql syntax", "you have an error in your sql",
-        "warning: mysql", "unclosed quotation",
-        "quoted string not properly terminated",
-        "pg_query()", "supplied argument is not a valid",
-        "division by zero", "odbc_exec",
-        "microsoft ole db provider", "syntax error near",
-        "unterminated string literal",
     ]
 
     def check(self, req, resp, context):
         resp_text = str(resp.body or "").lower()
         body = req.body or {}
         body_str = str(body).lower()
-        url_str  = req.url.lower()
-
-        # Payload in request AND reflected in response
         for marker in self._INJECT_MARKERS:
             if marker in body_str and marker in resp_text:
                 return True
-
-        # SQL/server error leaked in response (regardless of payload)
-        if resp.status_code in (200, 500):
-            for leak in self._RESPONSE_ONLY_LEAKS:
-                if leak in resp_text:
-                    return True
-
         return False
 
 

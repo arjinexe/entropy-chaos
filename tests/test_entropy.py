@@ -359,14 +359,9 @@ def test_server_error_rule():
     from entropy.core.models import HTTPRequest, HTTPResponse
     from entropy.fuzzing.executor import ServerErrorRule
     rule = ServerErrorRule()
-    # Trigger via SQL injection payload in body
-    req  = HTTPRequest("POST", "http://localhost/login", body={"username": "' OR '1'='1"})
-    resp = HTTPResponse(500, body={"error": "SQL syntax error near \' OR '1'='1'"})
+    req  = HTTPRequest("GET", "http://localhost/test")
+    resp = HTTPResponse(500, body={"error": "boom"})
     assert_true(rule.check(req, resp, {}))
-    # Also trigger via error leak in response
-    req2  = HTTPRequest("GET", "http://localhost/data")
-    resp2 = HTTPResponse(500, body={"detail": "Traceback (most recent call last)"})
-    assert_true(rule.check(req2, resp2, {}))
 
 
 @test
@@ -414,7 +409,7 @@ def test_bot_swarm_concurrency():
     cfg    = PersonaConfig(PersonaType.BOT_SWARM, concurrency=25)
     persona = BotSwarmPersona(cfg, llm, schema)
     reqs   = persona.build_request_sequence(AttackVector(endpoint=ep, payload={}))
-    assert_eq(len(reqs), 10)  # capped at 10
+    assert_eq(len(reqs), 25)
 
 
 # ============================================================
